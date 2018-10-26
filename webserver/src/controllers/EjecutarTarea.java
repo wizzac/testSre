@@ -17,7 +17,6 @@ import utils.HttpClient;
 public class EjecutarTarea implements Runnable {
     private int backendServerPort;
     private JSONObject request;
-    private MainController mc;
 
 
     public EjecutarTarea(Integer backendServerPort,JSONObject request){
