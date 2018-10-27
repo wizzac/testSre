@@ -1,31 +1,35 @@
 package controllers;
-
-import com.sun.deploy.net.HttpResponse;
-import org.json.JSONArray;
 import org.json.JSONObject;
 import utils.HttpClient;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.*;
-import org.json.JSONArray;
-import org.json.JSONObject;
-import utils.HttpClient;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 
 
-public class EjecutarTarea implements Runnable {
+//public class EjecutarTarea implements Runnable {
+public class EjecutarTarea implements Callable {
     private int backendServerPort;
     private JSONObject request;
+    private Map response;
+    private int user;
+    private Respuesta r= new Respuesta();
+    private Double conversionRate;
 
 
-    public EjecutarTarea(Integer backendServerPort,JSONObject request){
+
+    public EjecutarTarea(Integer backendServerPort, JSONObject request,int user,Double conversionRate){
         this.backendServerPort=backendServerPort;
         this.request=request;
+        this.user=user;
+        this.conversionRate=conversionRate;
     }
 
     @Override
-    public void run() {
+    public Respuesta call() {
+//    public void run() {
 
         JSONObject finalResponse = new JSONObject();
         Double totalAmount = 0D;
@@ -34,104 +38,59 @@ public class EjecutarTarea implements Runnable {
         requestProperties.put("method", "GET");
         requestProperties.put("body", new LinkedHashMap());
         requestProperties.put("headers", new LinkedHashMap());
-        requestProperties.put("socketTimeout", 15000);
-        requestProperties.put("connectionTimeout", 3000);
-
+        requestProperties.put("socketTimeout", 150);
+        requestProperties.put("connectionTimeout", 1000);
+        final String sold="/soldItems/";
+        final String item="/items/";
         try {
-            JSONObject parameters = request.getJSONObject("parameters");
-            JSONArray userIdArray = parameters.getJSONArray("userId");
-            Integer userId = Integer.valueOf(userIdArray.get(0).toString());
-            finalResponse.put("sellerId", userId);
 
-            //-------------------------------------------------------------------
-            //Request para obtener el usuario y chequear si es de tipo 'seller'
+            Integer userId = user;
+            Integer responseStatus;
 
-            requestProperties.put("uriWithQueryString", "/users/" + userId);
-            Map response = HttpClient.executeRequest(requestProperties);
-            Integer responseStatus = (Integer) response.get("status");
+            requestProperties.put("uriWithQueryString",sold + userId.toString());
+            response = HttpClient.executeRequest(requestProperties);
+            responseStatus = (Integer) response.get("status");
             if (responseStatus > 201) {
-                setServiceFailedResponse("could not get user information");
-                return;
+                setServiceFailedResponse("could not get soldItems for user " + userId);
+                return r;
             }
-            Map responseBody = (Map) response.get("body");
-            if (!"seller".equals((String) responseBody.get("user_type"))) {
-                //Si no es seller no retorna 200
-                setResponseBody("{'message':'user is not seller'}");
-                setResponseStatus(404);
-                setResponseHeader("content-type", "application/json");
-            } else {
-                //-------------------------------------------------------------------
-                //Request para obtener los items vendidos por ese seller
-                requestProperties.put("uriWithQueryString", "/soldItems/" + userId.toString());
+            List soldItems = (List) response.get("body");
+
+            //Iterar para obtener el precio de cada uno de esos items vendidos
+
+            for (int i = 0; i < soldItems.size(); i++) {
+                Map itemJson = (Map) soldItems.get(i);
+                Long itemId = (Long) itemJson.get("id");
+                //Request para obtener cada item y así saber el precio, y sumarlo
+
+                    requestProperties.put("uriWithQueryString",item  + itemId.toString());
                 response = HttpClient.executeRequest(requestProperties);
                 responseStatus = (Integer) response.get("status");
                 if (responseStatus > 201) {
-                    setServiceFailedResponse("could not get soldItems for user " + userId);
-                    return;
+                    setServiceFailedResponse("could not get item information");
+                    return r;
                 }
-                List soldItems = (List) response.get("body");
-
-
-                //-------------------------------------------------------------------
-                //Iterar para obtener el precio de cada uno de esos items vendidos
-                for (int i = 0; i < soldItems.size(); i++) {
-                    Map itemJson = (Map) soldItems.get(i);
-                    Long itemId = (Long) itemJson.get("id");
-                    //Request para obtener cada item y así saber el precio, y sumarlo
-                    requestProperties.put("uriWithQueryString", "/items/" + itemId.toString());
-                    response = HttpClient.executeRequest(requestProperties);
-                    responseStatus = (Integer) response.get("status");
-                    if (responseStatus > 201) {
-                        setServiceFailedResponse("could not get item information");
-                        return;
-                    }
-                    Map itemInfo = (Map) response.get("body");
-                    totalAmount += (Double) itemInfo.get("price");
-                }
-                finalResponse.put("totalAmount", totalAmount);
-
-                //--------------------------------------------------------------------
-                //Obtención de tasa de cambio a dolares
-                requestProperties.put("uriWithQueryString", "/currency_conversions?from=USD&to=ARS");
-                response = HttpClient.executeRequest(requestProperties);
-                responseStatus = (Integer) response.get("status");
-                if (responseStatus > 201) {
-                    setServiceFailedResponse("could not get currency information");
-                    return;
-                }
-                Map currencyInfo = (Map) response.get("body");
-                Double conversionRate = (Double) currencyInfo.get("rate");
-                Double totalAmountUSD = totalAmount / conversionRate;
-                finalResponse.put("totalAmountUSD", totalAmountUSD);
-
-
-                //-------------------------------------------------------------------
-                //Notificación del monto total que se va a devolver
-                notifyResponse(userId, totalAmountUSD);
-
-                //-------------------------------------------------------------------
-                //Seteo de respuesta
-                setResponseBody(finalResponse);
-                setResponseStatus(200);
-                setResponseHeader("content-type", "application/json");
+                Map itemInfo = (Map) response.get("body");
+                totalAmount += (Double) itemInfo.get("price");
             }
+            finalResponse.put("totalAmount", totalAmount);
+
+            Double totalAmountUSD = totalAmount / conversionRate;
+            finalResponse.put("totalAmountUSD", totalAmountUSD);
+            notifyResponse(requestProperties,userId, totalAmountUSD);
+            r=new Respuesta(finalResponse.toString(),200);
         } catch (Exception e) {
             System.out.println("Exception " + e);
         }
+        return r;
     }
 
-
-    private void notifyResponse(Integer userToNotify, Double amountToNotify){
+    private void notifyResponse(Map requestProperties,Integer userToNotify, Double amountToNotify){
         Map bodyToNotify = new LinkedHashMap();
         bodyToNotify.put("id", userToNotify);
         bodyToNotify.put("amount", amountToNotify);
-
-        Map requestProperties = new LinkedHashMap();
-        requestProperties.put("baseUrl", "http://localhost:" + backendServerPort);
-        requestProperties.put("method", "POST");
         requestProperties.put("uriWithQueryString", "/notifications");
         requestProperties.put("body", bodyToNotify);
-        requestProperties.put("headers", new LinkedHashMap());
 
         Map notoificationResponse = HttpClient.executeRequest(requestProperties);
         try{
@@ -142,10 +101,21 @@ public class EjecutarTarea implements Runnable {
             }
         }
         catch(Exception e){
-            System.out.println("Error propio "+e.getMessage());
-            //setServiceFailedResponse("could not notify result");
+            setServiceFailedResponse("could not notify result");
             return;
         }
+    }
+
+    private void setServiceFailedResponse(String message){
+        JSONObject finalResp=new JSONObject();
+        try{
+            finalResp.put("message",message);
+            r=new Respuesta(finalResp.toString(),200);
+        }catch (Exception ex){
+            System.out.println(ex.getMessage());
+        }
+        System.out.println(r.getMsj());
+        return;
     }
 
 
