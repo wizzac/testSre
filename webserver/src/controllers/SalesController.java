@@ -1,6 +1,7 @@
 package controllers;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -8,12 +9,13 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import utils.HttpClient;
 import java.util.Map;
+
 public class SalesController extends MainController{
 
     private int backendServerPort = 8888;
-    //	private ThreadPool pool=new ThreadPool(300);
+    private Double conversionRate=CurrencyController.currency;
     private ExecutorService servicio = Executors.newFixedThreadPool(300);
-
+    private Respuesta respuesta = new Respuesta();
 
     public void index() {
 
@@ -25,60 +27,77 @@ public class SalesController extends MainController{
         requestProperties.put("method", "GET");
         requestProperties.put("body", new LinkedHashMap());
         requestProperties.put("headers", new LinkedHashMap());
-        requestProperties.put("socketTimeout", 1000);
+        requestProperties.put("socketTimeout", 5000);
         requestProperties.put("connectionTimeout", 1000);
-        Respuesta respuesta = new Respuesta();
+        requestProperties.put("uriWithQueryString", curr);
+        Integer responseStatus;
+
+
+        CompletableFuture<Respuesta> future=new CompletableFuture<>();
+
+
         try {
-
-            JSONObject parameters = request.getJSONObject("parameters");
-            JSONArray userIdArray = parameters.getJSONArray("userId");
-            Integer userId = Integer.valueOf(userIdArray.get(0).toString());
-            finalResponse.put("sellerId", userId);
-
-            requestProperties.put("uriWithQueryString", curr);
-            response = HttpClient.executeRequest(requestProperties);
-            Integer responseStatus = (Integer) response.get("status");
-            if (responseStatus > 201) {
-                setServiceFailedResponse("could not get currency information", respuesta);
-            } else {
-                Map currencyInfo = (Map) response.get("body");
-                Double conversionRate = (Double) currencyInfo.get("rate");
+            for (int attempt = 0; attempt < 3; attempt++) {
+                JSONObject parameters = request.getJSONObject("parameters");
+                JSONArray userIdArray = parameters.getJSONArray("userId");
+                Integer userId = Integer.valueOf(userIdArray.get(0).toString());
+                finalResponse.put("sellerId", userId);
 
                 requestProperties.put("uriWithQueryString", "/users/" + userId);
                 response = HttpClient.executeRequest(requestProperties);
                 responseStatus = (Integer) response.get("status");
+                System.out.println("estado error "+responseStatus);
                 if (responseStatus > 201) {
-                    setServiceFailedResponse("could not get user information", respuesta);
-                    return;
+                    setServiceFailedResponse("could not get user information user");
+                    continue;
                 }
-
                 Map responseBody = (Map) response.get("body");
-                if (!"seller".equals(responseBody.get("user_type"))) {
-                    setServiceFailedResponse("user is not seller", respuesta);
+                if (!"seller".equals(responseBody.get("user_type"))){
+                    setServiceFailedResponse("user is not seller");
+                    break;
                 } else {
-                    EjecutarTarea tarea = new EjecutarTarea(backendServerPort, request, userId,conversionRate);
-                    servicio.submit(tarea);
-                    Future<Respuesta> promesa = servicio.submit(tarea);
-                    respuesta = promesa.get();
-                }
+                    EjecutarTarea tarea = new EjecutarTarea(backendServerPort, request, userId, conversionRate);
+                    future.supplyAsync(()->{
+                        Future<Respuesta> promesa;
+                        Respuesta tareaReal=new Respuesta();
+                        try {
+                            promesa = servicio.submit(tarea);
+                            tareaReal= promesa.get();
+                            System.out.println(tareaReal.getMsj());
+                            System.out.println(tareaReal.getStatus());
+                        }catch (Exception e){
+                            System.out.println("Entra por error ");
+                            setServiceFailedResponse("could not get user information");
+                            tareaReal=this.respuesta;
+                        }finally {
+                            return tareaReal;
+                        }
+                    }).thenApply(tareaReal->{
+                        System.out.println("then apply ");
+                        setRespuesta(tareaReal);
+                        return 1;
+                    });
 
-        }
+                    break;
+                }
+            }
         }catch(Exception e){
             System.out.println(e.getMessage());
         }
         setResponseBody(respuesta.getMsj());
         setResponseStatus(respuesta.getStatus());
         setResponseHeader("content-type", "application/json");
-
     }
 
-    private void setServiceFailedResponse(String message,Respuesta respuesta){
-
-        respuesta=new Respuesta("{'message':'" + message + "'}",200);
-
+    private void setServiceFailedResponse(String message){
+        this.respuesta=new Respuesta("{'message':'" + message + "'}",200);
         return;
     }
 
+    private void setRespuesta(Respuesta r){
+        this.respuesta=r;
+        return;
+    }
 
 
 }
