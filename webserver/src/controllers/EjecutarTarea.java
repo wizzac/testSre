@@ -38,8 +38,8 @@ public class EjecutarTarea implements Callable {
         requestProperties.put("method", "GET");
         requestProperties.put("body", new LinkedHashMap());
         requestProperties.put("headers", new LinkedHashMap());
-        requestProperties.put("socketTimeout", 1000);
-        requestProperties.put("connectionTimeout", 5000);
+        requestProperties.put("socketTimeout", 5000);
+        requestProperties.put("connectionTimeout", 1000);
         final String sold="/soldItems/";
         final String item="/items/";
         try {
@@ -59,7 +59,6 @@ public class EjecutarTarea implements Callable {
                 }
             }
             List soldItems = (List) response.get("body");
-            //Iterar para obtener el precio de cada uno de esos items vendidos
             CompletableFuture future=new CompletableFuture<>();
             Future<Double> promesa;
 
@@ -67,49 +66,31 @@ public class EjecutarTarea implements Callable {
                 Map itemJson = (Map) soldItems.get(i);
                 Long itemId = (Long) itemJson.get("id");
 
-
                 requestProperties.put("uriWithQueryString",item  + itemId.toString());
                 //Request para obtener cada item y así saber el precio, y sumarlo
                 System.out.println("INIT ITEM: " + i);
                 future=CompletableFuture.runAsync(()->{
-
                     Double resParcial=0d;
                     for (int attempt = 0; attempt < 3; attempt++) {
-//                        System.out.println("Llamada  "+requestProperties);
                         response = HttpClient.executeRequest(requestProperties);
                         Integer status = (Integer) response.get("status");
                         if (status > 201) {
-//                            System.out.println("Error Estado: "+status+" "+response.toString());
                             continue;
                         }else{
-//                            System.out.println("Success Estado: "+status+" "+response.toString());
                             Map itemInfo = (Map) response.get("body");
                             resParcial=(Double) itemInfo.get("price");
                             totalPorTread(resParcial);
                             break;
                         }
                     }
-//                    return resParcial;
                 });
-//                        .thenApply(precio-> {
-//                            totalPorTread(precio);
-//                            return 1;
-//                    }
-//                );
-
-//                Map itemInfo = (Map) response.get("body");
-//                totalAmount += (Double) itemInfo.get("price");
-                System.out.println("ITEM: " + i);
-
             }
-
-
+            future.get();
             finalResponse.put("totalAmount", this.total);
             Double totalAmountUSD = this.total / conversionRate;
             finalResponse.put("totalAmountUSD", totalAmountUSD);
             notifyResponse(requestProperties,userId, totalAmountUSD);
             r=new Respuesta(finalResponse.toString(),200);
-
         } catch (Exception e) {
             System.out.println("Exception " + e);
         }
@@ -122,8 +103,6 @@ public class EjecutarTarea implements Callable {
         bodyToNotify.put("amount", amountToNotify);
         requestProperties.put("uriWithQueryString", "/notifications");
         requestProperties.put("body", bodyToNotify);
-
-
         try{
             for (int attempt = 0; attempt < 3; attempt++) {
                 Map notoificationResponse = HttpClient.executeRequest(requestProperties);
@@ -148,18 +127,15 @@ public class EjecutarTarea implements Callable {
             finalResp.put("message",message);
             r=new Respuesta(finalResp.toString(),200);
         }catch (Exception ex){
-//            System.out.println(ex.getMessage());
+
         }
-//        System.out.println(r.getMsj());
         return;
     }
 
 
     private void totalPorTread(Double suma){
-//        System.out.println("SUMO " + suma);
         synchronized (total) {
             total += suma;
-//            System.out.println("AHORA SUMO " + total);
         }
     }
 
