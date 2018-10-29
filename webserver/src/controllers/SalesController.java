@@ -27,13 +27,13 @@ public class SalesController extends MainController{
         requestProperties.put("method", "GET");
         requestProperties.put("body", new LinkedHashMap());
         requestProperties.put("headers", new LinkedHashMap());
-        requestProperties.put("socketTimeout", 5000);
-        requestProperties.put("connectionTimeout", 1000);
+        requestProperties.put("socketTimeout", 1000);
+        requestProperties.put("connectionTimeout", 5000);
         requestProperties.put("uriWithQueryString", curr);
         Integer responseStatus;
 
 
-        CompletableFuture<Respuesta> future=new CompletableFuture<>();
+        CompletableFuture future=new CompletableFuture<>();
 
 
         try {
@@ -46,41 +46,37 @@ public class SalesController extends MainController{
                 requestProperties.put("uriWithQueryString", "/users/" + userId);
                 response = HttpClient.executeRequest(requestProperties);
                 responseStatus = (Integer) response.get("status");
-                System.out.println("estado error "+responseStatus);
+                System.out.println("estado error " + responseStatus);
                 if (responseStatus > 201) {
                     setServiceFailedResponse("could not get user information user");
                     continue;
                 }
                 Map responseBody = (Map) response.get("body");
-                if (!"seller".equals(responseBody.get("user_type"))){
+                if (!"seller".equals(responseBody.get("user_type"))) {
                     setServiceFailedResponse("user is not seller");
                     break;
                 } else {
                     EjecutarTarea tarea = new EjecutarTarea(backendServerPort, request, userId, conversionRate);
-                    future.supplyAsync(()->{
+                    future = CompletableFuture.supplyAsync(() -> {
                         Future<Respuesta> promesa;
-                        Respuesta tareaReal=new Respuesta();
+                        Respuesta tareaReal = new Respuesta();
                         try {
                             promesa = servicio.submit(tarea);
-                            tareaReal= promesa.get();
-                            System.out.println(tareaReal.getMsj());
-                            System.out.println(tareaReal.getStatus());
-                        }catch (Exception e){
-                            System.out.println("Entra por error ");
+                            setRespuesta(promesa.get());
+                        } catch (Exception e) {
                             setServiceFailedResponse("could not get user information");
-                            tareaReal=this.respuesta;
-                        }finally {
-                            return tareaReal;
                         }
-                    }).thenApply(tareaReal->{
-                        System.out.println("then apply ");
-                        setRespuesta(tareaReal);
-                        return 1;
-                    });
 
-                    break;
+                        //                    },servicio).thenApply(tareaReal->{
+//                        System  ut.println("then apply ");
+//
+                        return 1;
+//                    });
+//                    break;
+                    });
                 }
             }
+            future.get();
         }catch(Exception e){
             System.out.println(e.getMessage());
         }
