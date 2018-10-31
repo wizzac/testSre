@@ -1,6 +1,8 @@
 package controllers;
 
-public class Respuesta {
+import java.util.concurrent.Callable;
+
+public class Respuesta implements Callable{
     private String msj;
     private int status;
 
@@ -11,6 +13,11 @@ public class Respuesta {
     public Respuesta(){
 
     }
+
+    @Override
+    public Respuesta call(){
+        return this;
+    };
 
     public int getStatus() {
         return status;
