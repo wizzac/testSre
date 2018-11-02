@@ -1,7 +1,13 @@
 package controllers;
 
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.Mockito;
+import org.mockito.MockitoAnnotations;
+import org.mockito.Mockito.*;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -16,6 +22,18 @@ public class EjecutarTareaTest {
     public Double rate;
     public Map map;
 
+//    @Mock
+//    private Respuesta respuesta;
+//
+//    @InjectMocks
+//    private EjecutarTarea service;
+
+    @Before
+    public void setUp() throws Exception {
+        MockitoAnnotations.initMocks(this);
+    }
+
+    @Before
     public void init(){
         Random r = new Random();
         int low = 10;
@@ -34,7 +52,7 @@ public class EjecutarTareaTest {
 
     @Test
     public void call() throws Exception {
-        init();
+
         final EjecutarTarea controller=new EjecutarTarea(user,rate,map);
         Respuesta resp= controller.call();
         assertTrue(resp!=null);
@@ -44,7 +62,6 @@ public class EjecutarTareaTest {
 
     @Test
     public void getCall() throws Exception {
-        init();
         final EjecutarTarea controller=new EjecutarTarea(user,rate,map);
         for(int i=0;i<3;i++) {
             Future<Respuesta> resp = controller.getCall();

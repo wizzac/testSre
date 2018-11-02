@@ -10,7 +10,6 @@ import static org.junit.Assert.*;
 
 public class MyCallableTest extends EjecutarTareaTest{
 
-
     @Test
     public void call() throws Exception {
         init();

@@ -12,11 +12,10 @@ public class MyCallable implements Callable {
     public Respuesta call() {
         Respuesta res=new Respuesta();
         try {
-            Future<Respuesta> respuestaFuture = EjecutarTarea.getCall();
+            Future<Respuesta> respuestaFuture = tarea.getCall();
             res=respuestaFuture.get();
         }catch (Exception e){
             System.out.println(e.getMessage());
-
         }
         return res;
     }
